@@ -1,0 +1,44 @@
+OC Knowledge Collection
+1.关键字weak、assign、strong、assign、retain
+weak：只能修饰对象。引用对象被释放后引用计数置0，指针自动置为nil，避免循环引用。
+assign：既可以修饰对象，也可以修饰基本数据类型和结构体，但是修饰对象可能导致野指针问题，对象释放后，指针不会自动置空，再向对象发送消息会崩溃。
+retain：保留计数，获得对象的所有权，引用计数在原有基础上加一。
+copy：一般认为是在内存中重新开辟一个新的内存空间，用来存储新的对象，和原来的对象是两个不同的地址，引用计数分别为1。但是当copy对象为不可变对象时，那么copy的作用相当于retain，节约内存空间。
+
+2.深复制与浅复制
+深复制：内容拷贝，直接拷贝整个对象到另一块内存中。
+浅复制：指针拷贝，不拷贝对象本身，只拷贝指向对象的指针。  
+*copy返回imutable对象；如果对copy返回值使用mutable对象接口就会crash；mutableCopy返回mutable对象。
+
+1. 非集合类对象的copy与mutableCopy  
+系统非集合类对象指的是NSString、NSNumber等。在非集合类对象中，对immutable对象进行copy操作是指针复制，mutableCopy操作时是内容复制；对mutable对象进行copy和mutableCopy操作都是内容复制。
+2. 集合类对象的copy与mutableCopy  
+集合类对象是指NSArray、NSDictionary、NSSet等。在集合类对象中，对immutable对象进行copy操作时指针复制，mutableCopy操作是内容复制；对mutable对象进行Copy和mutableCopy操作都是内容复制。但是集合对象的内容复制仅限于对象本身，对象元素依然是指针复制。
+
+3.Block不仅可以作为函数参数或者函数的返回值，其本身还可以带输入参数或返回值。  
+声明Block时使用copy属性。
+*如果self中包含block的引用，并且在block内使用了self就会导致循环引用。因此在block内部使用关键字__weak修饰self(weakSelf)，可以避免循环引用。
+__weak typeof(self) weakSelf = self;
+[self doSomeBlock:^ {
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (strongSelf) {
+        // do something...
+    }
+}];
+
+Q:为什么在block中还需要写一个strongSelf？  
+A:在Block中先写一个strongSelf，是为了避免在Block的执行过程中，突然出现self被释放的情况，Block执行完后strongSelf会自动释放，没有循环引用问题。通常情况下，如果不这么做的话，很容易出现一些奇怪的逻辑，甚至闪退。
+##### Q:什么时候在block中不需要使用weakSelf？  
+当Block本身不被self所持有，而被其他对象所持有，同时不产生循环引用的时候，就不需要使用weakSelf了。  
+最常见的就是UIView的动画代码，在使用UIView的animateWithDuration:animations方法做动画时，并不需要使用weakSelf，因为引用持有关系是：  
+1）UIView的某个负责动画的对象持有了Block  
+2）Block持有了self  
+因为self并不持有Block，所以没有循环引用产生，因此不需要使用weakSelf。  
+当动画结束时，UIView会结束持有这个Block，如果没有别的对象持有Block的话，Block对象会释放，从而Block会释放掉对self的持有，整个内存引用关系被解除。
+Q:列举一个需求场景，block会产生循环引用，但是业务又不允许使用weak self，并且解释在这种情况下如何解决循环引用问题。 
+A:构造一个循环引用，以便保证引用双方都存在。比如有一个后台任务，在任务执行完毕后，通知另外一个实例。  
+解析循环引用问题主要有两个办法：  
+1）事前避免，在会产生循环引用的地方使用weak弱引用，以避免产生循环引用。  
+2）事后补救，我们明确知道会存在循环引用，但是在合理的位置主动断开环中的一个引用，使得对象得以回收。  
+
+*Block中可以使用全局变量，也可以使用局部变量，但是在Block外声明的实例变量，在默认情况下只能在Block中使用，但不能修改。因为Block中会拷贝一份外部变量，并且变量是只读的。要想修改，需要在变量前添加__block关键字。  
